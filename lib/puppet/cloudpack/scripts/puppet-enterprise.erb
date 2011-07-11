@@ -1,0 +1,5 @@
+# this assumes that the payload has already been delivered
+cd <%= options[:tmp_dir] %>
+tar -xvzf puppet.tar.gz
+echo "q_puppetagent_certname='<%= options[:certname] %>'" >> puppet.answers
+puppet-enterprise-<%= options[:puppet_version] ? options[:puppet_version] : '1.1' %>-all/puppet-enterprise-installer -a puppet.answers &> install.log

@@ -1,0 +1,21 @@
+apt-get install ruby rubygems || yum install -y ruby rubygems || false
+gem install facter <% if options[:facter_version] %>-v<%= options[:facter_version] %><% end %> --no-ri --no-rdoc
+gem install puppet <% if options[:puppet_version] %>-v<%= options[:puppet_version] %><% end %> --no-ri --no-rdoc
+export PATH="$PATH:/var/lib/gems/1.8/bin"
+mkdir -p /etc/puppet /var/lib /var/log /var/run
+cat >/etc/puppet/puppet.conf <<EOF
+[main]
+  logdir = /var/log/puppet
+  rundir = /var/run/puppet
+  ssldir = \$vardir/ssl
+  vardir = /var/lib/puppet
+
+  pluginsync = true
+
+  server = <%= options[:server] %>
+
+  environment = <%= options[:environment] %>
+EOF
+
+export PATH="$PATH:/var/lib/gems/1.8/bin"
+puppet agent --no-daemonize --onetime --no-splay --verbose >& puppet_agent.log

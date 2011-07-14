@@ -553,12 +553,19 @@ module Puppet::CloudPack
       install_script = Puppet::CloudPack::Installer.build_installer_template(script, options)
       Puppet.debug("Compiled installation script:")
       Puppet.debug(install_script)
-      tmp_install_script = Tempfile.new('install_script').path
-      File.open(tmp_install_script, 'w') do |fh|
-        fh.write(install_script)
+
+      # create a temp file to write compiled script
+      # capture the name of the path as tmp_install_script
+      tmp_install_script = begin
+        f = Tempfile.open('install_script')
+        f.write(install_script)
+        f.path
+      ensure
+        f.close
       end
 
       Puppet.notice "Executing Puppet Install Script ..."
+
 
       scp.upload(tmp_install_script, "#{tmp_dir}/#{script}.sh")
       cmd = "bash -c 'chmod u+x #{tmp_dir}/#{script}.sh; #{tmp_dir}/#{script}.sh | tee #{tmp_dir}/install.log'"

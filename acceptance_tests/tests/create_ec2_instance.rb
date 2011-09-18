@@ -70,6 +70,7 @@ scp_to controller, File.expand_path(keyfile), "/root/.ssh/#{File.basename(keyfil
 
 step "test that we can install PE agent on #{agent_dnsname}"
 agent_certname=nil
+sleep 60
 # I would like to be able to see stdout/err even when it fails?
 on controller, "puppet node install --keyfile /root/.ssh/#{File.basename(keyfile)} --login #{login} --install-script=gems --server #{master} --debug --verbose --trace #{agent_dnsname}", :acceptable_exit_codes => [ 0 ] do
   agent_certname = stdout.split("\n").last.chomp

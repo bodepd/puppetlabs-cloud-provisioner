@@ -338,13 +338,14 @@ module Puppet::CloudPack
       if options[:node_group]
         dashboard_classify(certname, options)
       else
-        Puppet.info('No classification method selected')
+        Puppet.notice('No classification method selected')
       end
     end
 
     def dashboard_classify(certname, options)
       Puppet.info "Using http://#{Puppet[:report_server]}:#{Puppet[:report_port]} as Dashboard."
       http = Puppet::Network::HttpPool.http_instance(Puppet[:report_server], Puppet[:report_port])
+      puts http.class
 
       # Workaround for the fact that Dashboard is typically insecure.
       http.use_ssl = false
@@ -352,23 +353,40 @@ module Puppet::CloudPack
 
       begin
         Puppet.notice 'Registering node ...'
-        data = { 'node' => { 'name' => certname } }
-        response = http.post('/nodes.json', data.to_pson, headers)
-        if (response.code == '201')
-          Puppet.notice 'Registering node ... Done'
+        # get the list of nodes that have been specified in the Dashboard
+        response = http.get('/nodes.json', headers )
+        nodes = handle_json_response(response, 'Listing nodes')
+        raise Puppet::Error, "Could not retrieve the list of dashbaord nodes" unless nodes
+        node = nodes.detect {|node| node['name'] == certname }
+        node_info = if node
+          Puppet.notice("Node: #{certname} already exists, not creating")
+          node
         else
-          Puppet.warning 'Registering node ... Failed'
-          Puppet.warning "Server responded with a #{response.code} status"
+          data = { 'node' => { 'name' => certname } }
+          response = http.post('/nodes.json', data.to_pson, headers)
+          handle_json_response(response, 'Registering node', '201')
         end
+        node_id = node_info['id']
+
+        # checking if the specified group even exists
+        response = http.get('/node_groups.json', headers )
+        node_groups = handle_json_response(response, 'Listing groups')
+
+        node_group_info = node_groups.detect {|group| group['name'] == options[:node_group] }
+        unless node_group_info
+          raise Puppet::Error, "Group #{options[:node_group]} does not exist in Dashboard. Groups must exist before they can be assigned to nodes."
+        end
+        node_group_id = node_group_info['id']
 
         Puppet.notice 'Classifying node ...'
-        data = { 'node_name' => certname, 'group_name' => options[:node_group] }
-        response = http.post("/memberships.json", data.to_pson, headers)
-        if (response.code == '201')
-          Puppet.notice 'Classifying node ... Done'
+        response = http.get("/memberships.json", headers)
+        memberships = handle_json_response(response, 'Listing memberships')
+        if memberships.detect{|relat| relat['node_group_id'] == node_group_id and relat['node_id'] == node_id }
+          Puppet.warning("Group #{options[:node_group]} already added to node #{options[:node_name]}, nothing to do")
         else
-          Puppet.warning 'Classifying node ... Failed'
-          Puppet.warning "Server responded with a #{response.code} status"
+          data = { 'node_name' => certname, 'group_name' => options[:node_group] }
+          response = http.post("/memberships.json", data.to_pson, headers)
+          handle_json_response(response, 'Classifying node', '201')
         end
       rescue Errno::ECONNREFUSED
         Puppet.warning 'Registering node ... Error'
@@ -378,6 +396,18 @@ module Puppet::CloudPack
       end
 
       return nil
+    end
+
+    def handle_json_response(response, action, expected_code='200')
+      if response.code == expected_code
+        Puppet.notice "#{action} ... Done"
+        PSON.parse response.body
+      else
+        Puppet.warning "#{action} ... Failed"
+        Puppet.info("Body: #{response.body}")
+        Puppet.warning "Server responded with a #{response.code} status"
+        nil
+      end
     end
 
     def create(options)
